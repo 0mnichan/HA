@@ -170,12 +170,22 @@ createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   if (url.pathname.startsWith('/api/')) {
+    // Forward method, headers and body so signed POSTs (ingest, notice, poll)
+    // can be exercised locally exactly as they would be against the Worker.
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = chunks.length ? Buffer.concat(chunks) : undefined;
+
     const wres = await worker.fetch(
-      new Request(`https://preview.local${req.url}`, { method: req.method }),
+      new Request(`https://preview.local${req.url}`, {
+        method: req.method,
+        headers: req.headers,
+        body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,
+      }),
       env, { waitUntil() {} },
     );
     res.writeHead(wres.status, Object.fromEntries(wres.headers));
-    res.end(await wres.text());
+    res.end(Buffer.from(await wres.arrayBuffer()));
     return;
   }
 

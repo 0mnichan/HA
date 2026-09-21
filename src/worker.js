@@ -41,6 +41,7 @@ export default {
       if (url.pathname === '/api/status') return await handleStatus(request, env);
       if (url.pathname === '/api/ingest') return await handleIngest(request, env, ctx);
       if (url.pathname === '/api/notice') return await handleNotice(request, env);
+      if (url.pathname === '/api/poll') return await handlePoll(request, env);
       if (url.pathname === '/api/healthz') return json({ ok: true, now: nowSec() });
     } catch (err) {
       return json({ error: 'internal_error', detail: String(err && err.message || err) }, 500);
@@ -141,6 +142,42 @@ async function handleNotice(request, env) {
 
   await saveState(env, state);
   return json({ ok: true, notice: state.notice });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/poll - run the Tailscale poll now instead of waiting for the cron
+// ---------------------------------------------------------------------------
+
+async function handlePoll(request, env) {
+  if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+
+  const bodyText = await request.text();
+  const auth = await verifySignature(request, bodyText, env);
+  if (!auth.ok) return json({ error: 'unauthorized', detail: auth.reason }, 401);
+
+  const configured = !!(env.TAILSCALE_API_KEY
+    || (env.TAILSCALE_OAUTH_CLIENT_ID && env.TAILSCALE_OAUTH_CLIENT_SECRET));
+  if (!configured) {
+    return json({
+      ok: false,
+      error: 'tailscale_not_configured',
+      detail: 'No Tailscale credentials on the Worker. Set TAILSCALE_API_KEY, or '
+        + 'TAILSCALE_OAUTH_CLIENT_ID and TAILSCALE_OAUTH_CLIENT_SECRET, with `wrangler secret put`.',
+    }, 400);
+  }
+
+  await pollTailscale(env);
+  const state = await loadState(env);
+  const tsState = state.tailscale || null;
+
+  // Echo the whole block back: during setup the error string is the point.
+  return json({
+    ok: !!(tsState && tsState.ok),
+    tailscale: tsState,
+    hint: tsState && !tsState.ok
+      ? 'Check TAILSCALE_DEVICE in wrangler.toml matches the hostname in your Tailscale admin console, and that the credentials carry read access to devices and routes.'
+      : undefined,
+  }, tsState && tsState.ok ? 200 : 502);
 }
 
 // ---------------------------------------------------------------------------

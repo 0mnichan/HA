@@ -417,6 +417,70 @@ test('posting a notice requires the same signature as ingest', async () => {
   assert.equal(res.status, 401);
 });
 
+// --- on-demand Tailscale poll ---------------------------------------------
+
+test('the poll endpoint requires a signature', async () => {
+  const env = makeEnv({ TAILSCALE_API_KEY: 'k' });
+  const res = await post(env, '/api/poll', {}, { secret: 'wrong' });
+  assert.equal(res.status, 401);
+});
+
+test('polling without Tailscale credentials explains what to set', async () => {
+  const env = makeEnv();
+  const res = await post(env, '/api/poll', {});
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.equal(body.error, 'tailscale_not_configured');
+  assert.match(body.detail, /wrangler secret put/);
+});
+
+test('a failing poll reports the reason rather than a bare error', async () => {
+  const env = makeEnv({ TAILSCALE_API_KEY: 'bad-key', TAILSCALE_DEVICE: 'pi' });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('unauthorized', { status: 401 });
+  try {
+    const res = await post(env, '/api/poll', {});
+    assert.equal(res.status, 502);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.match(body.tailscale.error, /401/);
+    assert.match(body.hint, /TAILSCALE_DEVICE/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a successful poll stores the device and shows up in the public status', async () => {
+  const env = makeEnv({ TAILSCALE_API_KEY: 'good-key', TAILSCALE_DEVICE: 'homeassistant' });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/devices')) {
+      return Response.json({ devices: [{
+        id: '123', hostname: 'homeassistant', name: 'homeassistant.tail1234.ts.net',
+        online: true, os: 'linux', clientVersion: '1.78.1', authorized: true,
+        keyExpiryDisabled: true, advertisedRoutes: ['0.0.0.0/0', '::/0'],
+        enabledRoutes: ['0.0.0.0/0', '::/0'],
+      }] });
+    }
+    return Response.json({ advertisedRoutes: ['0.0.0.0/0', '::/0'], enabledRoutes: ['0.0.0.0/0', '::/0'] });
+  };
+  try {
+    const res = await post(env, '/api/poll', {});
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.tailscale.device.hostname, 'homeassistant');
+    assert.equal(body.tailscale.device.exitNodeApproved, true);
+
+    const view = await (await getStatus(env)).json();
+    const ids = view.components.map((c) => c.id);
+    assert.ok(ids.includes('ts_node_online'));
+    assert.ok(ids.includes('exit_approved'));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 // --- history --------------------------------------------------------------
 
 test('repeated reports accumulate daily availability', async () => {

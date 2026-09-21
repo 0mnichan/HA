@@ -57,6 +57,11 @@ It never reports a stale green.
 
 ## Quick start
 
+> **Setting this up for the first time? Follow
+> [docs/SETUP.md](docs/SETUP.md).** It is the full start-to-finish walkthrough
+> for Home Assistant OS, with a verification step after each part. What follows
+> here is the condensed version.
+
 ### 1. Deploy the Worker
 
 ```sh
@@ -115,19 +120,25 @@ outage, provider says this evening"). A `maintenance` notice also overrides the
 computed status.
 
 ```sh
-SECRET='your-ingest-secret'
-ENDPOINT='https://your-worker.workers.dev'
-BODY='{"level":"maintenance","title":"Router firmware upgrade","body":"Back by 21:00."}'
-TS=$(date +%s)
-SIG=$(printf '%s' "$TS.$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
-printf '%s' "$BODY" | curl -X POST "$ENDPOINT/api/notice" \
-  -H "X-Timestamp: $TS" -H "X-Signature: sha256=$SIG" --data-binary @-
+export STATUS_ENDPOINT="https://your-worker.workers.dev"
+export INGEST_SECRET="..."
 
-# clear it again
-BODY='{"clear":true}'   # ...and repeat the two lines above
+./scripts/status-cli.sh notice critical "ISP outage" "Provider says this evening."
+./scripts/status-cli.sh notice maintenance "Router upgrade" "Back by 21:00."
+./scripts/status-cli.sh clear
 ```
 
-`level` is one of `info`, `warning`, `critical`, `maintenance`.
+`scripts/status-cli.sh` signs requests for you. It also has:
+
+```sh
+./scripts/status-cli.sh status    # fetch the public status JSON
+./scripts/status-cli.sh poll      # run the Tailscale poll now, instead of
+                                  # waiting up to 15 minutes for the cron
+```
+
+`poll` is the fastest way to tell whether your Tailscale credentials and
+`TAILSCALE_DEVICE` are right — it returns the API error verbatim when they
+are not.
 
 ## Free-tier write budget
 
@@ -180,14 +191,30 @@ you see is what deploys.
 ## Layout
 
 ```
+docs/SETUP.md              start-to-finish setup guide  <- start here
 src/worker.js              ingest, status API, Tailscale poll, status rules
 site/                      the status page (no build step, no dependencies)
 agent/ts-health-agent.sh   the health agent that runs on the Pi
 agent/systemd/             timer + unit for Raspberry Pi OS
+scripts/status-cli.sh      signed requests: poll, notices
 test/worker.test.mjs       Worker tests
 test/preview.mjs           local preview with synthetic data
 docs/                      Home Assistant OS and Uptime Kuma setup
 ```
+
+## HTTP API
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /api/status` | none | the public status payload the page renders |
+| `POST /api/ingest` | HMAC | a report from the Pi agent |
+| `POST /api/poll` | HMAC | run the Tailscale poll now |
+| `POST /api/notice` | HMAC | set or clear the incident banner |
+| `GET /api/healthz` | none | liveness |
+
+Signed routes take `X-Timestamp` and `X-Signature: sha256=<hex>`, where the
+signature is HMAC-SHA256 of `<timestamp>.<body>` keyed with `INGEST_SECRET`,
+valid for 5 minutes.
 
 ## Adding your own check
 
