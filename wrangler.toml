@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Cloudflare Worker: public status page + ingest API
+#
+# First-time setup:
+#   npm install
+#   npx wrangler kv namespace create STATUS_KV      # paste the id below
+#   npx wrangler secret put INGEST_SECRET           # same value as the Pi agent
+#   npx wrangler deploy
+#
+# Optional (independent Tailscale-side truth, works even when the Pi is dead):
+#   npx wrangler secret put TAILSCALE_API_KEY       # or the OAuth pair below
+#   npx wrangler secret put TAILSCALE_OAUTH_CLIENT_ID
+#   npx wrangler secret put TAILSCALE_OAUTH_CLIENT_SECRET
+# ---------------------------------------------------------------------------
+
+name = "tailscale-exit-node-status"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# Static status page. Assets are served first; anything that is not a file
+# (e.g. /api/*) falls through to the Worker.
+[assets]
+directory = "./site"
+
+[[kv_namespaces]]
+binding = "STATUS_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Polls the Tailscale API so the page knows whether the node is online even
+# when the Pi agent has stopped reporting. 15m keeps KV writes inside the
+# free tier (see README "Free-tier write budget"). Harmless if no Tailscale
+# credentials are configured - the handler no-ops.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# Cosmetic / behavioural. Secrets never go here - use `wrangler secret put`.
+SITE_TITLE = "Tailscale Exit Node Status"
+SITE_SUBTITLE = "Raspberry Pi - home exit node"
+# Seconds without an agent report before the agent is treated as offline.
+# Should be ~2.5x the agent interval (default agent interval is 120s).
+AGENT_STALE_AFTER = "300"
+# Tailnet to query. "-" means "the default tailnet for these credentials".
+TAILSCALE_TAILNET = "-"
+# Hostname (or name prefix) of the exit node device in your tailnet.
+TAILSCALE_DEVICE = ""
+# Set to "true" to show the exit node's public egress IP on the public page.
+# Off by default - that is your home IP address.
+SHOW_EGRESS_IP = "false"
+# Optional link shown in the footer, e.g. your Uptime Kuma status page.
+UPTIME_KUMA_URL = ""

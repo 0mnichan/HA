@@ -1,0 +1,21 @@
+[Unit]
+Description=Tailscale exit node health agent
+Documentation=https://github.com/0mnichan/HA
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ts-health-agent.sh
+# The config holds the ingest secret.
+EnvironmentFile=-/etc/default/ts-health-agent
+TimeoutStartSec=60
+
+# The agent only reads /proc and /sys and makes outbound requests.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+RestrictSUIDSGID=true

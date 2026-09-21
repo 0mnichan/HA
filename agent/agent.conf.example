@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# ts-health-agent configuration.
+#
+# Copy to one of:
+#   /etc/ts-health-agent.conf      (systemd / Raspberry Pi OS)
+#   <next to the script>/agent.conf (Home Assistant OS, e.g. /config/ts-health/)
+#
+# This file contains a shared secret. Keep it readable only by root:
+#   chmod 600 agent.conf
+# ---------------------------------------------------------------------------
+
+# --- required --------------------------------------------------------------
+
+# Your deployed Worker, with no trailing slash.
+STATUS_ENDPOINT="https://tailscale-exit-node-status.YOUR-SUBDOMAIN.workers.dev"
+
+# Must match the Worker secret set with: npx wrangler secret put INGEST_SECRET
+# Generate one with: openssl rand -hex 32
+INGEST_SECRET="replace-me"
+
+# --- optional: Uptime Kuma push monitors -----------------------------------
+# Create a "Push" monitor in Uptime Kuma, copy its push URL, and map it to a
+# check id here. The variable name is KUMA_PUSH_<check id>, with any dashes
+# replaced by underscores. Check ids are visible in `./ts-health-agent.sh --dry-run`.
+#
+# KUMA_PUSH_overall="http://homeassistant.local:3001/api/push/aBcDeF"
+# KUMA_PUSH_egress_internet="http://homeassistant.local:3001/api/push/gHiJkL"
+# KUMA_PUSH_ts_backend="http://homeassistant.local:3001/api/push/mNoPqR"
+# KUMA_PUSH_dns_resolution="http://homeassistant.local:3001/api/push/sTuVwX"
+
+# --- optional: environment tuning ------------------------------------------
+
+# Home Assistant add-on slugs. Check yours with: ha addons list
+# TAILSCALE_ADDON_SLUG="a0d7b954_tailscale"
+# KUMA_ADDON_SLUG="a0d7b954_uptimekuma"
+
+# Force a specific way of reaching the Tailscale CLI. Normally auto-detected.
+# TAILSCALE_CLI="docker exec addon_a0d7b954_tailscale tailscale"
+
+# Which filesystem to report free space for. "auto" picks /config if it exists
+# (Home Assistant OS) and / otherwise.
+# DISK_PATH="auto"
+
+# Endpoint used to prove the Pi can actually reach the internet. It must
+# return a 2xx/3xx quickly and cheaply.
+# CONNECTIVITY_URL="https://connectivitycheck.gstatic.com/generate_204"
+# PING_TARGET="1.1.1.1"
+# PING_COUNT="5"
+
+# Look up the public egress IP and country via Cloudflare's trace endpoint.
+# The country is shown on the status page; the IP is only shown if you also
+# set SHOW_EGRESS_IP=true on the Worker. Off by default - it is your home IP.
+# EGRESS_IP_LOOKUP="false"
+
+# Thresholds
+# TEMP_WARN_C="75"
+# TEMP_CRIT_C="82"
+# DISK_WARN_PCT="85"
+# DISK_CRIT_PCT="92"
+# LATENCY_WARN_MS="400"

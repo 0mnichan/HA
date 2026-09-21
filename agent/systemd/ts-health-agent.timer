@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the Tailscale exit node health agent every 2 minutes
+Documentation=https://github.com/0mnichan/HA
+
+[Timer]
+# 120s keeps the Worker inside Cloudflare KV's free write tier.
+# See "Free-tier write budget" in the README before lowering this.
+OnBootSec=60
+OnUnitActiveSec=120
+AccuracySec=5s
+Unit=ts-health-agent.service
+
+[Install]
+WantedBy=timers.target
