@@ -459,7 +459,15 @@ function buildView(state, env) {
 
   // --- Agent-side checks ---------------------------------------------------
   if (!agentStale) {
-    for (const c of report.checks) components.push(c);
+    // The Home Assistant add-on's `advertise_exit_node` option is only
+    // advisory: the route can also be advertised through `tailscaled_args`.
+    // If the Tailscale API can see the route, that is authoritative and the
+    // option check would be a false alarm, so drop it.
+    const routeConfirmed = !!(ts && ts.ok && ts.device && ts.device.advertisesExitNode);
+    for (const c of report.checks) {
+      if (routeConfirmed && c.id === 'ts_addon_exit_config' && c.status !== 'operational') continue;
+      components.push(c);
+    }
   } else {
     components.push({
       id: 'agent', label: 'Monitoring agent on the Pi', group: 'Host', critical: false,

@@ -12,10 +12,15 @@ It answers three questions:
 2. **What is the problem?** Every check reports a sentence, not a red dot:
    *"The Pi cannot resolve hostnames, so anything routed through the exit node
    will fail to load by name even though raw connectivity is fine."*
-3. **Is Tailscale itself healthy on the Pi?** Daemon state, whether the node is
-   online per Tailscale's own coordination server, whether `0.0.0.0/0` is both
-   advertised *and approved*, node key expiry, and whether UDP is open or
-   everything is being relayed through DERP.
+3. **Is Tailscale itself healthy on the Pi?** Daemon or add-on state, whether
+   the node is online per Tailscale's own coordination server, whether
+   `0.0.0.0/0` is both advertised *and approved*, node key expiry, and whether
+   UDP is open or everything is being relayed through DERP.
+
+Tailscale here runs as a **Home Assistant add-on**, so the checks include the
+two add-on options that silently stop an exit node working —
+`advertise_exit_node` being off, and `userspace_networking` being on (in which
+mode Tailscale cannot route other devices' traffic at all).
 
 ## How it works
 
@@ -74,11 +79,14 @@ is preferable to a personal API key, which expires after 90 days.
 
 ### 2. Install the agent on the Pi
 
-**Home Assistant OS** — see [docs/home-assistant.md](docs/home-assistant.md).
-That is almost certainly your case, and HAOS has real constraints worth
-reading about first.
+**Home Assistant OS — [docs/home-assistant.md](docs/home-assistant.md).**
+Read that first. HAOS has real constraints: there is no systemd to add units
+to, and the `tailscale` CLI lives inside the add-on's own container, so the
+agent runs from the Advanced SSH & Web Terminal add-on and gets the exit-node
+facts from the Tailscale API instead of the CLI.
 
-**Plain Raspberry Pi OS / Debian:**
+<details>
+<summary>Plain Raspberry Pi OS / Debian, with Tailscale installed directly</summary>
 
 ```sh
 sudo apt install -y curl jq openssl
@@ -92,6 +100,8 @@ Verify before trusting it:
 ```sh
 /usr/local/bin/ts-health-agent.sh --dry-run --verbose
 ```
+
+</details>
 
 ### 3. Optional: Uptime Kuma alerting
 

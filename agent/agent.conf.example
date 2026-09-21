@@ -30,9 +30,11 @@ INGEST_SECRET="replace-me"
 
 # --- optional: environment tuning ------------------------------------------
 
-# Home Assistant add-on slugs. Check yours with: ha addons list
+# Home Assistant add-on slugs. These are discovered automatically from the
+# Supervisor API, so normally leave them alone. Set them only to disambiguate
+# (e.g. two Tailscale add-ons installed). Check yours with: ha addons list
 # TAILSCALE_ADDON_SLUG="a0d7b954_tailscale"
-# KUMA_ADDON_SLUG="a0d7b954_uptimekuma"
+# KUMA_ADDON_SLUG="3fc0d1e6_uptimekuma"
 
 # Force a specific way of reaching the Tailscale CLI. Normally auto-detected.
 # TAILSCALE_CLI="docker exec addon_a0d7b954_tailscale tailscale"

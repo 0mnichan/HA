@@ -283,6 +283,47 @@ test('a single problem does not get a "plus others" suffix', async () => {
   assert.ok(!/Plus \d+ other/.test(view.overall.summary), view.overall.summary);
 });
 
+test('the add-on option check is dropped when the Tailscale API confirms the route', async () => {
+  const env = makeEnv();
+  await post(env, '/api/ingest', okReport({
+    checks: [{
+      id: 'ts_addon_exit_config', label: 'Add-on set to advertise an exit node',
+      group: 'Exit node', status: 'down',
+      message: "The add-on has 'advertise_exit_node' turned off.", metric: 'off', critical: true,
+    }],
+  }));
+  // Tailscale itself can see 0.0.0.0/0 being advertised, so the add-on option
+  // is a false alarm (it can be set through tailscaled_args instead).
+  const state = JSON.parse(env.STATUS_KV.store.get('state:v1'));
+  state.tailscale = {
+    checkedAt: Math.floor(Date.now() / 1000), ok: true, error: null,
+    device: {
+      hostname: 'pi', online: true, advertisesExitNode: true, exitNodeApproved: true,
+      advertisesExitNodeV6: true, exitNodeApprovedV6: true,
+      authorized: true, keyExpiryDisabled: true, expires: null,
+    },
+  };
+  env.STATUS_KV.store.set('state:v1', JSON.stringify(state));
+
+  const view = await (await getStatus(env)).json();
+  assert.ok(!view.components.some((c) => c.id === 'ts_addon_exit_config'));
+  assert.equal(view.overall.status, 'operational');
+});
+
+test('the add-on option check stands when the Tailscale API is not configured', async () => {
+  const env = makeEnv();
+  await post(env, '/api/ingest', okReport({
+    checks: [{
+      id: 'ts_addon_exit_config', label: 'Add-on set to advertise an exit node',
+      group: 'Exit node', status: 'down',
+      message: "The add-on has 'advertise_exit_node' turned off.", metric: 'off', critical: true,
+    }],
+  }));
+  const view = await (await getStatus(env)).json();
+  assert.ok(view.components.some((c) => c.id === 'ts_addon_exit_config'));
+  assert.equal(view.overall.status, 'down');
+});
+
 // --- sanitisation ---------------------------------------------------------
 
 test('agent-supplied strings are clamped and stripped before going public', async () => {

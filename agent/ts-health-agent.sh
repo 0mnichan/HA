@@ -35,8 +35,10 @@ PING_TARGET="${PING_TARGET:-1.1.1.1}"
 PING_COUNT="${PING_COUNT:-5}"
 DIRECT_IP_URL="${DIRECT_IP_URL:-https://1.1.1.1/}"  # used to tell DNS failure from no internet
 DISK_PATH="${DISK_PATH:-auto}"
-TAILSCALE_ADDON_SLUG="${TAILSCALE_ADDON_SLUG:-a0d7b954_tailscale}"
-KUMA_ADDON_SLUG="${KUMA_ADDON_SLUG:-a0d7b954_uptimekuma}"
+# Left empty on purpose: these are discovered from the Supervisor API, since
+# an add-on's slug carries the hash of whichever repository it came from.
+TAILSCALE_ADDON_SLUG="${TAILSCALE_ADDON_SLUG:-}"
+KUMA_ADDON_SLUG="${KUMA_ADDON_SLUG:-}"
 TAILSCALE_CLI="${TAILSCALE_CLI:-}"                  # override, e.g. a docker exec wrapper
 EGRESS_IP_LOOKUP="${EGRESS_IP_LOOKUP:-false}"       # third-party lookup; off by default
 CURL_TIMEOUT="${CURL_TIMEOUT:-8}"
@@ -112,7 +114,38 @@ if [ -n "${SUPERVISOR_TOKEN:-}" ] && supervisor_get "info" >/dev/null 2>&1; then
   log "Supervisor API is reachable"
 fi
 
-addon_state() { supervisor_get "addons/$1/info" | jq -r '.data.state // empty' 2>/dev/null; }
+# The agent asks about the same add-on several times, so keep the last answer.
+_addon_cache=""
+_addon_cache_slug=""
+addon_info() {
+  [ -z "${1:-}" ] && return 1
+  if [ "$1" != "$_addon_cache_slug" ]; then
+    _addon_cache="$(supervisor_get "addons/$1/info")"
+    _addon_cache_slug="$1"
+  fi
+  [ -n "$_addon_cache" ] || return 1
+  printf '%s' "$_addon_cache"
+}
+
+addon_state() { addon_info "$1" | jq -r '.data.state // empty' 2>/dev/null; }
+addon_opt()   { addon_info "$1" | jq -r --arg k "$2" '.data.options[$k] // empty' 2>/dev/null; }
+
+# Match an add-on by slug or name rather than hardcoding a repository hash.
+discover_addon() {
+  supervisor_get "addons" | jq -r --arg re "$1" '
+    [.data.addons[]?
+     | select(((.slug // "") | test($re; "i")) or ((.name // "") | test($re; "i")))
+     | .slug] | first // empty' 2>/dev/null
+}
+
+if $SUPERVISOR_AVAILABLE; then
+  [ -z "$TAILSCALE_ADDON_SLUG" ] && TAILSCALE_ADDON_SLUG="$(discover_addon 'tailscale')"
+  [ -z "$KUMA_ADDON_SLUG" ]      && KUMA_ADDON_SLUG="$(discover_addon 'uptime.?kuma')"
+  log "add-on slugs: tailscale=[${TAILSCALE_ADDON_SLUG:-not found}] kuma=[${KUMA_ADDON_SLUG:-not found}]"
+fi
+# Fall back to the community add-on's slug so the docker-exec path still works
+# when the Supervisor API is not reachable.
+TAILSCALE_ADDON_SLUG="${TAILSCALE_ADDON_SLUG:-a0d7b954_tailscale}"
 
 # ===========================================================================
 # Checks
@@ -177,6 +210,27 @@ elif $SUPERVISOR_AVAILABLE; then
 else
   add_check ts_local "Tailscale visibility from the Pi" "Tailscale" unknown \
     "Neither the Tailscale CLI nor the Supervisor API is reachable from the agent, so local Tailscale state is unknown. The Tailscale API check still applies." "" false
+fi
+
+# --- 1b. Tailscale add-on exit node configuration --------------------------
+# Home Assistant OS specific: the exit node is configured through the add-on's
+# own options, so tailscaled can be perfectly healthy and still route nothing.
+
+if $SUPERVISOR_AVAILABLE && addon_info "$TAILSCALE_ADDON_SLUG" >/dev/null 2>&1; then
+  ADV_EXIT="$(addon_opt "$TAILSCALE_ADDON_SLUG" advertise_exit_node)"
+  USERSPACE="$(addon_opt "$TAILSCALE_ADDON_SLUG" userspace_networking)"
+
+  case "$ADV_EXIT" in
+    true)
+      add_check ts_addon_exit_config "Add-on set to advertise an exit node" "Exit node" operational         "The Tailscale add-on has 'advertise_exit_node' turned on." "on" false ;;
+    false)
+      add_check ts_addon_exit_config "Add-on set to advertise an exit node" "Exit node" down         "The Tailscale add-on has 'advertise_exit_node' turned off, so the Pi is not offering itself as an exit node at all. Turn it on in the add-on configuration and restart it."         "off" true ;;
+    *) : ;;  # Option absent on this add-on build - stay quiet rather than guess.
+  esac
+
+  if [ "$USERSPACE" = "true" ]; then
+    add_check ts_addon_userspace "Add-on networking mode" "Exit node" down       "The Tailscale add-on is running with 'userspace_networking' turned on. Tailscale cannot route other devices' traffic in that mode, so the exit node will not work until it is switched off."       "userspace" true
+  fi
 fi
 
 # --- 2. DERP / UDP path ----------------------------------------------------
@@ -341,7 +395,7 @@ UPTIME_S="$(awk '{printf "%d", $1}' /proc/uptime 2>/dev/null)"
 
 # --- 7. Home Assistant side-cars ------------------------------------------
 
-if $SUPERVISOR_AVAILABLE; then
+if $SUPERVISOR_AVAILABLE && [ -n "$KUMA_ADDON_SLUG" ]; then
   KUMA_STATE="$(addon_state "$KUMA_ADDON_SLUG")"
   if [ "$KUMA_STATE" = "started" ]; then
     add_check kuma_addon "Uptime Kuma" "Host" operational "Monitoring add-on is running." "started" false
