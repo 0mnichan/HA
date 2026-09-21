@@ -324,7 +324,7 @@ async function pollTailscale(env) {
         error: null,
         device: {
           hostname: clamp(device.hostname, 64),
-          online: device.online === true,
+          online: typeof device.connectedToControl === 'boolean' ? device.connectedToControl : (Date.now() - Date.parse(device.lastSeen || '')) < 300000,
           lastSeen: device.lastSeen || null,
           os: clamp(device.os, 32),
           clientVersion: clamp(device.clientVersion, 48),
