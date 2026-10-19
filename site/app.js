@@ -90,12 +90,13 @@
     el('site-title').textContent = d.title || 'Exit Node Status';
     el('site-subtitle').textContent = d.subtitle || '';
 
+    renderFreshness(d);
     renderHero(d);
     renderNotice(d);
-    renderUptime(d);
-    renderComponents(d);
     renderRecent(d);
     renderLatency(d);
+    renderUptime(d);
+    renderComponents(d);
     renderHost(d);
     renderFooter(d);
   }
@@ -330,7 +331,7 @@
     </div>`;
   }
 
-  function renderFooter(d) {
+  function renderFreshness(d) {
     const agent = d.sources.agent;
     const ts = d.sources.tailscaleApi;
     const parts = [];
@@ -343,13 +344,15 @@
     }
     el('last-updated').textContent = parts.join(' · ');
     el('live-dot').setAttribute('data-stale', String(agent.stale));
+  }
 
-    const links = [];
-    if (d.links && d.links.uptimeKuma) {
-      links.push(`<a href="${esc(d.links.uptimeKuma)}" rel="noopener noreferrer">Detailed monitors</a>`);
-    }
-    links.push('Auto-refreshes every 30s');
-    el('foot-links').innerHTML = links.join(' · ');
+  function renderFooter(d) {
+    const url = d.links && d.links.uptimeKuma;
+    const foot = el('site-foot');
+    foot.hidden = !url;
+    el('foot-links').innerHTML = url
+      ? `<a href="${esc(url)}" rel="noopener noreferrer">Detailed monitors</a>`
+      : '';
   }
 
   // ---- tooltip ------------------------------------------------------------

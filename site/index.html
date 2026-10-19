@@ -51,6 +51,11 @@
     </button>
   </header>
 
+  <div class="freshness">
+    <span><span class="live-dot" id="live-dot"></span><span id="last-updated">—</span></span>
+    <span>Auto-refreshes every 30s</span>
+  </div>
+
   <div class="card error-banner" id="error-banner" role="alert">
     <strong>Cannot reach the status service.</strong>
     <p class="hero-summary" id="error-detail" style="margin-top:4px"></p>
@@ -70,6 +75,25 @@
     <h3 id="notice-title"></h3>
     <p id="notice-body"></p>
     <span class="when" id="notice-when"></span>
+  </section>
+
+  <section class="card" id="recent-card">
+    <h2>Recent activity</h2>
+    <div class="bars dense" id="recent-bars" role="img" aria-label="Recent status samples"></div>
+    <div class="bars-axis">
+      <span id="recent-from">—</span>
+      <span>Now</span>
+    </div>
+
+    <div id="latency-block" style="margin-top:24px" hidden>
+      <div class="bars-axis" style="margin-bottom:6px">
+        <span>Exit latency to the internet</span>
+        <span id="latency-current"></span>
+      </div>
+      <div class="spark-wrap">
+        <svg class="spark" id="spark" preserveAspectRatio="none" role="img" aria-label="Exit latency over the recent window"></svg>
+      </div>
+    </div>
   </section>
 
   <section class="card">
@@ -106,32 +130,12 @@
     <div id="components"><p class="skeleton">Loading checks…</p></div>
   </section>
 
-  <section class="card" id="recent-card">
-    <h2>Recent activity</h2>
-    <div class="bars dense" id="recent-bars" role="img" aria-label="Recent status samples"></div>
-    <div class="bars-axis">
-      <span id="recent-from">—</span>
-      <span>Now</span>
-    </div>
-
-    <div id="latency-block" style="margin-top:24px" hidden>
-      <div class="bars-axis" style="margin-bottom:6px">
-        <span>Exit latency to the internet</span>
-        <span id="latency-current"></span>
-      </div>
-      <div class="spark-wrap">
-        <svg class="spark" id="spark" preserveAspectRatio="none" role="img" aria-label="Exit latency over the recent window"></svg>
-      </div>
-    </div>
-  </section>
-
   <section class="card" id="host-card" hidden>
     <h2>Raspberry Pi health</h2>
     <div class="tiles" id="host-tiles"></div>
   </section>
 
-  <footer class="site-foot">
-    <span><span class="live-dot" id="live-dot"></span><span id="last-updated">—</span></span>
+  <footer class="site-foot" id="site-foot" hidden>
     <span id="foot-links"></span>
   </footer>
 
