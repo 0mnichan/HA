@@ -94,7 +94,8 @@ function resolveKvNamespace() {
     fail(`Could not parse the namespace list:\n${raw}`);
   }
 
-  const matches = list.filter((n) => String(n.title || '').includes('STATUS_KV'));
+  const matches = list.filter(
+    (n) => String(n.title || '').toLowerCase().includes('status_kv'));
 
   if (matches.length === 1) return matches[0].id;
 
