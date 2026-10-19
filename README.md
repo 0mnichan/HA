@@ -140,6 +140,21 @@ export INGEST_SECRET="..."
 `TAILSCALE_DEVICE` are right — it returns the API error verbatim when they
 are not.
 
+## Deploying
+
+After the first setup, a GitHub Action handles it — including from a phone:
+
+- Push to the branch (touching `src/`, `site/` or `wrangler.toml`), or
+- **Actions** tab → *Deploy status page* → **Run workflow**
+
+It runs the tests, fills in the KV namespace id and `[vars]`, deploys, then
+checks the live `/api/status` and writes the result into the run summary.
+
+Requires one secret (`CLOUDFLARE_API_TOKEN`) and usually one variable
+(`VAR_TAILSCALE_DEVICE`) on the repository — see
+[docs/SETUP.md](docs/SETUP.md#deploying-from-a-phone-or-any-machine-without-the-repo).
+Locally it is still just `npx wrangler deploy`.
+
 ## Free-tier write budget
 
 Cloudflare KV's free tier allows **1,000 writes per day**. Everything is packed

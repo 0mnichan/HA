@@ -316,6 +316,51 @@ exit node, and nothing more. Your home IP is not published unless you set
 
 ---
 
+## Deploying from a phone (or any machine without the repo)
+
+A GitHub Action deploys the Worker, so you never need a laptop after the
+one-time setup below. Everything here works in a phone browser.
+
+### One-time setup
+
+1. **Cloudflare dashboard** → your profile → **API Tokens** → **Create Token**
+   → use the **"Edit Cloudflare Workers"** template → create, and copy it.
+2. **This repo on GitHub** → **Settings** → **Secrets and variables** →
+   **Actions**:
+   - **Secrets** tab → *New repository secret* →
+     name `CLOUDFLARE_API_TOKEN`, value = the token from step 1.
+   - **Variables** tab → *New repository variable* →
+     name `VAR_TAILSCALE_DEVICE`, value = your Pi's Tailscale hostname.
+3. **Actions** tab → **Deploy status page** → **Run workflow**.
+
+### After that
+
+Every push to this branch that touches `src/`, `site/` or `wrangler.toml`
+deploys automatically. You can also always re-run it by hand from the
+**Actions** tab.
+
+The run ends with a summary showing the live URL, the overall status and how
+long ago the Pi reported, so you can confirm it worked without leaving GitHub.
+
+### Why the config lives in GitHub, not in the repo
+
+`wrangler deploy` replaces the Worker's plain-text vars with whatever
+`wrangler.toml` holds, so committing one person's KV namespace id and device
+name would overwrite them on anyone else's deploy. Instead
+`scripts/apply-config.mjs` fills them in at deploy time:
+
+| What | Where it comes from |
+|---|---|
+| KV namespace id | `KV_NAMESPACE_ID` variable, or resolved from your Cloudflare account automatically |
+| `TAILSCALE_DEVICE` and other `[vars]` | repository variable `VAR_<NAME>`, else the repo default |
+| `INGEST_SECRET`, `TAILSCALE_*` secrets | stored in Cloudflare; **never touched by a deploy** |
+
+So if you set something with `wrangler secret put`, it survives. If you set
+something in `[vars]`, set it as a `VAR_<NAME>` repository variable too, or
+the next deploy resets it to the repo default.
+
+---
+
 ## Running it day to day
 
 **Post an incident banner** (for what automation cannot know):

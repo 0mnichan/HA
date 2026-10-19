@@ -1,0 +1,119 @@
+# Deploys the status page to Cloudflare Workers.
+#
+# One-time setup (all of it doable from a phone browser):
+#   1. Cloudflare dashboard -> My Profile -> API Tokens -> Create Token,
+#      using the "Edit Cloudflare Workers" template.
+#   2. This repo -> Settings -> Secrets and variables -> Actions
+#        Secrets   tab: new secret  CLOUDFLARE_API_TOKEN  = the token
+#        Variables tab: new variable VAR_TAILSCALE_DEVICE = your Pi's hostname
+#   3. Actions tab -> "Deploy status page" -> Run workflow.
+#
+# After that every push to this branch that touches the Worker deploys itself.
+#
+# Worker secrets (INGEST_SECRET, TAILSCALE_OAUTH_*) live in Cloudflare and are
+# never touched by a deploy, so they do not belong here.
+
+name: Deploy status page
+
+on:
+  push:
+    branches: [prod/gallant-curie-vzxjx8]
+    paths:
+      - 'src/**'
+      - 'site/**'
+      - 'wrangler.toml'
+      - 'scripts/apply-config.mjs'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Fail with something actionable rather than a wrangler stack trace when
+      # the one-time setup above has not been done yet.
+      - name: Check credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=Setup needed::CLOUDFLARE_API_TOKEN is not set. Add it under Settings -> Secrets and variables -> Actions -> Secrets, then re-run this workflow."
+            exit 1
+          fi
+          echo "Cloudflare token is present."
+
+      # The tests use only Node built-ins, so there is nothing to install.
+      - name: Run tests
+        run: node --test test/*.test.mjs
+
+      - name: Apply deployment configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ vars.KV_NAMESPACE_ID }}
+          VAR_SITE_TITLE: ${{ vars.VAR_SITE_TITLE }}
+          VAR_SITE_SUBTITLE: ${{ vars.VAR_SITE_SUBTITLE }}
+          VAR_AGENT_STALE_AFTER: ${{ vars.VAR_AGENT_STALE_AFTER }}
+          VAR_TAILSCALE_TAILNET: ${{ vars.VAR_TAILSCALE_TAILNET }}
+          VAR_TAILSCALE_DEVICE: ${{ vars.VAR_TAILSCALE_DEVICE }}
+          VAR_SHOW_EGRESS_IP: ${{ vars.VAR_SHOW_EGRESS_IP }}
+          VAR_UPTIME_KUMA_URL: ${{ vars.VAR_UPTIME_KUMA_URL }}
+        run: node scripts/apply-config.mjs
+
+      - name: Deploy
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          url="$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+
+      # A deploy that returns 200 but renders nothing useful is still a
+      # failure, so check the live payload rather than just the exit code.
+      - name: Verify the deployed page
+        if: steps.deploy.outputs.url != ''
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Checking ${URL}/api/status"
+          for attempt in 1 2 3; do
+            body="$(curl -fsS --max-time 15 "${URL}/api/status")" && break
+            echo "attempt ${attempt} failed; retrying"; sleep 5
+          done
+          [ -n "${body:-}" ] || { echo "::error::No response from ${URL}/api/status"; exit 1; }
+
+          status="$(printf '%s' "$body" | jq -r '.overall.status')"
+          agent="$(printf '%s' "$body"  | jq -r '.sources.agent.ageSeconds // "never"')"
+          echo "overall=${status}  agent last reported ${agent}s ago"
+
+          {
+            echo "### Deployed"
+            echo ""
+            echo "**[${URL}](${URL})**"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Overall status | \`${status}\` |"
+            echo "| Pi last reported | ${agent}s ago |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # The page is live either way; these only flag that something on the
+          # Pi side needs attention, so they warn rather than fail the deploy.
+          if [ "$status" = "unknown" ]; then
+            echo "::warning::The page deployed but reports 'unknown' - nothing is reporting into it."
+          fi
